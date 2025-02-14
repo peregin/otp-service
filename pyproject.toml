@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "otp-service"
+version = "0.1.0"
+description = "One time password generator service"
+authors = ["peregin <hello@peregin.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.13"
+flask = "^3.1.0"
+pyotp = "^2.9.0"
+psycopg2-binary = "^2.9.10"
+qrcode = "^8.0"
+
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.4"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
