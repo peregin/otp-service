@@ -1,6 +1,10 @@
 One time password generator service
 ==
 
+Docs
+--
+http://localhost:5000/docs
+
 Project
 --
 ```shell
@@ -11,24 +15,21 @@ Testing
 --
 ```shell
 # register
-curl -X POST http://127.0.0.1:5000/register \
-     -H "Content-Type: application/json" \
-     -d '{"username": "testuser"}'
-     
-{
-  "message": "User registered",
-  "otp_auth_url": "otpauth://totp/MyApp:testuser?secret=TDU6LBK5UAHPRUU65ZAWO7CZAECTBARY&issuer=MyApp",
-  "secret": "TDU6LBK5UAHPRUU65ZAWO7CZAECTBARY"
-}
+curl -X 'POST' \
+  'http://localhost:5000/register?username=testuser' \
+  -H 'accept: application/json' \
+  -d ''
 
 # register with QR code
-curl -X POST http://127.0.0.1:5000/register/qr \
-     -H "Content-Type: application/json" \
-     -d '{"username": "testuser"}' \
-     --output qr.png
-
+curl -X 'POST' \
+  'http://localhost:5000/register/qr?username=testuser' \
+  -H 'accept: application/json' \
+  -d '' \
+  --output qr.png
+     
 # verify
-curl -X POST http://127.0.0.1:5000/verify \
-     -H "Content-Type: application/json" \
-     -d '{"username": "testuser", "otp": "123456"}'
+curl -X 'POST' \
+  'http://localhost:5000/verify?username=testuser&otp=123456' \
+  -H 'accept: application/json' \
+  -d ''
 ```
