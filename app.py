@@ -1,4 +1,5 @@
-from functools import wraps
+from functools import wraps, lru_cache
+from typing import Optional
 
 from flask import Flask, request, jsonify, send_file
 import pyotp
@@ -25,6 +26,25 @@ def init_db():
                             secret TEXT)''')
         conn.commit()
 
+@lru_cache(maxsize=100)
+def generate_totp_uri(secret: str, username: str, issuer: str = "MyApp") -> str:
+    """Cache TOTP URI generation for frequently accessed combinations"""
+    return pyotp.totp.TOTP(secret).provisioning_uri(username, issuer_name=issuer)
+
+def register_user(username: str, secret: str) -> Optional[str]:
+    """Handle user registration database operations"""
+    try:
+        with psycopg2.connect(DB_PARAMS) as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO users (username, secret) VALUES (%s, %s)",
+                    (username, secret)
+                )
+                conn.commit()
+        return None
+    except psycopg2.IntegrityError:
+        return "Username already exists"
+
 def validate_username(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -38,39 +58,24 @@ def validate_username(f):
 @validate_username
 def register(username: str):
     secret = pyotp.random_base32()
-    
-    try:
-        with psycopg2.connect(DB_PARAMS) as conn:
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO users (username, secret) VALUES (%s, %s)", (username, secret))
-            conn.commit()
-    except psycopg2.IntegrityError:
-        return jsonify({"error": "Username already exists"}), 400
-    
-    otp_auth_url = pyotp.totp.TOTP(secret).provisioning_uri(username, issuer_name="MyApp")
-    
+    error = register_user(username, secret)
+    if error:
+        return jsonify({"error": error}), 400
+    otp_auth_url = generate_totp_uri(secret, username)
     return jsonify({"message": "User registered", "secret": secret, "otp_auth_url": otp_auth_url})
 
 @app.route("/register/qr", methods=["POST"])
 @validate_username
 def register_qr(username: str):
     secret = pyotp.random_base32()
-    
-    try:
-        with psycopg2.connect(DB_PARAMS) as conn:
-            cursor = conn.cursor()
-            cursor.execute("INSERT INTO users (username, secret) VALUES (%s, %s)", (username, secret))
-            conn.commit()
-    except psycopg2.IntegrityError:
-        return jsonify({"error": "Username already exists"}), 400
-
-    otp_auth_url = pyotp.totp.TOTP(secret).provisioning_uri(username, issuer_name="MyApp")
-    
+    error = register_user(username, secret)
+    if error:
+        return jsonify({"error": error}), 400
+    otp_auth_url = generate_totp_uri(secret, username)
     img = qrcode.make(otp_auth_url)
     buf = BytesIO()
-    img.save(buf)
+    img.save(buf, format='PNG', optimize=True)
     buf.seek(0)
-    
     return send_file(buf, mimetype='image/png')
 
 @app.route("/verify", methods=["POST"])
@@ -85,7 +90,6 @@ def verify():
         cursor = conn.cursor()
         cursor.execute("SELECT secret FROM users WHERE username = %s", (username,))
         row = cursor.fetchone()
-    
     if not row:
         return jsonify({"error": "User not found"}), 404
     
