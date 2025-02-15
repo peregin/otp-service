@@ -11,6 +11,13 @@ Project
 poetry show --outdated
 ```
 
+Building
+--
+```shell
+docker build -t otp-service .
+docker run --rm -it -p 5000:8000 otp-service
+```
+
 Testing
 --
 ```shell
