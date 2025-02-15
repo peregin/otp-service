@@ -83,6 +83,7 @@ def register_qr(username: str):
     )
     qr.add_data(otp_auth_url)
     qr.make(fit=True, image_factory=PyPNGImage)
+    # qr.save("qr2.png")
     img = qr.make_image(fill="black", back_color="white")
     buf = BytesIO()
     img.save(buf, format='PNG')
