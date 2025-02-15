@@ -1,10 +1,11 @@
 import os
-from functools import wraps, lru_cache
+from functools import lru_cache
 from http import HTTPStatus
 
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, jsonify, send_file
 import pyotp
 from database import init_db, register_user, get_user_secret
+from decorators import RequestValidators
 from qr import generate_qr
 
 app = Flask(__name__)
@@ -16,29 +17,8 @@ def generate_totp_uri(secret: str, username: str, issuer: str = APP_ISSUER) -> s
     """Cache TOTP URI generation for frequently accessed combinations"""
     return pyotp.totp.TOTP(secret).provisioning_uri(username, issuer_name=issuer)
 
-def validate_username(f):
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        username = request.json.get("username")
-        if not username:
-            return jsonify({"error": "Username is required"}), HTTPStatus.BAD_REQUEST
-        return f(username, *args, **kwargs)
-    return decorated_function
-
-def validate_otp(f):
-    """Decorator to validate OTP presence in request"""
-    @wraps(f)
-    def decorated_function(*args, **kwargs):
-        data = request.json
-        otp = data.get("otp")
-        if not otp:
-            return jsonify({"error": "OTP is required"}), HTTPStatus.BAD_REQUEST
-        kwargs['otp'] = otp
-        return f(*args, **kwargs)
-    return decorated_function
-
 @app.route("/register", methods=["POST"])
-@validate_username
+@RequestValidators.validate_username
 def register(username: str):
     secret = pyotp.random_base32()
     error = register_user(username, secret)
@@ -48,7 +28,7 @@ def register(username: str):
     return jsonify({"message": "User registered", "secret": secret, "otp_auth_url": otp_auth_url})
 
 @app.route("/register/qr", methods=["POST"])
-@validate_username
+@RequestValidators.validate_username
 def register_qr(username: str):
     secret = pyotp.random_base32()
     error = register_user(username, secret)
@@ -60,8 +40,8 @@ def register_qr(username: str):
     return send_file(qr, mimetype='image/png')
 
 @app.route("/verify", methods=["POST"])
-@validate_username
-@validate_otp
+@RequestValidators.validate_username
+@RequestValidators.validate_otp
 def verify(username: str, otp: str):
     secret, error = get_user_secret(username)
     if error:
