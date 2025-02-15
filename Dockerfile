@@ -1,35 +1,33 @@
-# Use Python 3.11 slim base image for ARM
-FROM python:3.11-slim
-
-# Set working directory
-WORKDIR /app
+# Use the official Python image
+FROM python:3.13-slim
 
 # Set environment variables
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    ISSUER=peregin.com
+ENV POETRY_VERSION=1.8.3 \
+    POETRY_HOME="/opt/poetry" \
+    POETRY_VIRTUALENVS_IN_PROJECT=true \
+    POETRY_NO_INTERACTION=1 \
+    PATH="$POETRY_HOME/bin:$PATH"
 
 # Install system dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    python3-dev \
-    pipx \
-    && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y curl bash && \
+    curl -sSL https://install.python-poetry.org | python3 - && \
+    apt-get remove -y curl && apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
 
-ENV PATH="/root/.local/bin:${PATH}"
-RUN pipx install poetry
-RUN pipx inject poetry poetry-plugin-bundle
+# Set the working directory
+WORKDIR /app
 
-# Copy application code
+# Copy only dependency files first for caching
+COPY pyproject.toml poetry.lock ./
+
+# Copy the rest of the application
 COPY . .
 
-RUN poetry export -f requirements.txt --output requirements.txt --only main --without-hashes
+# Install dependencies
+RUN /opt/poetry/bin/poetry install --no-root --no-dev
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Expose port
+# Expose necessary ports (if applicable)
 EXPOSE 5000
 
-# Run the application
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5000"]
+# Define the entry point
+CMD ["/opt/poetry/bin/poetry", "run", "python", "app.py"]
