@@ -1,8 +1,6 @@
 from io import BytesIO
 
 import qrcode
-from qrcode.image.pure import PyPNGImage
-
 
 def generate_qr(data: str) -> BytesIO:
     """

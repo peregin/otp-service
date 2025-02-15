@@ -29,7 +29,7 @@ def register(username: str):
     secret = pyotp.random_base32()
     error = register_user(username, secret)
     if error:
-        return jsonify({"error": error}), 400
+        return jsonify({"error": error}), 409
     otp_auth_url = generate_totp_uri(secret, username)
     return jsonify({"message": "User registered", "secret": secret, "otp_auth_url": otp_auth_url})
 
@@ -39,7 +39,7 @@ def register_qr(username: str):
     secret = pyotp.random_base32()
     error = register_user(username, secret)
     if error:
-        return jsonify({"error": error}), 400
+        return jsonify({"error": error}), 409
     otp_auth_url = generate_totp_uri(secret, username)
 
     qr = generate_qr(otp_auth_url)
