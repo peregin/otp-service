@@ -1,51 +1,18 @@
+import os
 from functools import wraps, lru_cache
-from typing import Optional
-
 from flask import Flask, request, jsonify, send_file
 import pyotp
-import psycopg2
-import qrcode
-import os
-from io import BytesIO
-
-from qrcode.image.pure import PyPNGImage
+from database import init_db, register_user, get_user_secret
+from qr import generate_qr
 
 app = Flask(__name__)
 
-DB_NAME = os.getenv("DB_NAME", "otp")
-DB_USER = os.getenv("DB_USER", "otp")
-DB_PASSWORD = os.getenv("DB_PASSWORD", "otp")
-DB_HOST = os.getenv("DB_HOST", "localhost")
-DB_PORT = os.getenv("DB_PORT", "5490")
-DB_PARAMS = f"dbname={DB_NAME} user={DB_USER} password={DB_PASSWORD} host={DB_HOST} port={DB_PORT}"
-
-def init_db():
-    with psycopg2.connect(DB_PARAMS) as conn:
-        cursor = conn.cursor()
-        cursor.execute('''CREATE TABLE IF NOT EXISTS users (
-                            id SERIAL PRIMARY KEY,
-                            username TEXT UNIQUE,
-                            secret TEXT)''')
-        conn.commit()
+APP_ISSUER = os.getenv("ISSUER", "peregin.com")
 
 @lru_cache(maxsize=100)
-def generate_totp_uri(secret: str, username: str, issuer: str = "MyApp") -> str:
+def generate_totp_uri(secret: str, username: str, issuer: str = APP_ISSUER) -> str:
     """Cache TOTP URI generation for frequently accessed combinations"""
     return pyotp.totp.TOTP(secret).provisioning_uri(username, issuer_name=issuer)
-
-def register_user(username: str, secret: str) -> Optional[str]:
-    """Handle user registration database operations"""
-    try:
-        with psycopg2.connect(DB_PARAMS) as conn:
-            with conn.cursor() as cursor:
-                cursor.execute(
-                    "INSERT INTO users (username, secret) VALUES (%s, %s)",
-                    (username, secret)
-                )
-                conn.commit()
-        return None
-    except psycopg2.IntegrityError:
-        return "Username already exists"
 
 def validate_username(f):
     @wraps(f)
@@ -75,39 +42,21 @@ def register_qr(username: str):
         return jsonify({"error": error}), 400
     otp_auth_url = generate_totp_uri(secret, username)
 
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=10,
-        border=4,
-    )
-    qr.add_data(otp_auth_url)
-    qr.make(fit=True, image_factory=PyPNGImage)
-    # qr.save("qr2.png")
-    img = qr.make_image(fill="black", back_color="white")
-    buf = BytesIO()
-    img.save(buf, format='PNG')
-    buf.seek(0)
-    return send_file(buf, mimetype='image/png')
+    qr = generate_qr(otp_auth_url)
+    return send_file(qr, mimetype='image/png')
 
 @app.route("/verify", methods=["POST"])
-def verify():
+@validate_username
+def verify(username: str):
     data = request.json
-    username = data.get("username")
     otp = data.get("otp")
-    if not username or not otp:
+    if not otp:
         return jsonify({"error": "Username and OTP are required"}), 400
-    
-    with psycopg2.connect(DB_PARAMS) as conn:
-        cursor = conn.cursor()
-        cursor.execute("SELECT secret FROM users WHERE username = %s", (username,))
-        row = cursor.fetchone()
-    if not row:
-        return jsonify({"error": "User not found"}), 404
-    
-    secret = row[0]
+    secret, error = get_user_secret(username)
+    if error:
+        return jsonify({"error": error}), 404
+
     totp = pyotp.TOTP(secret)
-    
     if totp.verify(otp):
         return jsonify({"message": "OTP is valid"})
     else:
