@@ -1,6 +1,12 @@
 One time password generator service
 ==
 
+Project
+--
+```shell
+poetry show --outdated
+```
+
 Testing
 --
 ```shell

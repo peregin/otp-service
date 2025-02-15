@@ -8,6 +8,8 @@ import qrcode
 import os
 from io import BytesIO
 
+from qrcode.image.pure import PyPNGImage
+
 app = Flask(__name__)
 
 DB_NAME = os.getenv("DB_NAME", "otp")
@@ -72,9 +74,18 @@ def register_qr(username: str):
     if error:
         return jsonify({"error": error}), 400
     otp_auth_url = generate_totp_uri(secret, username)
-    img = qrcode.make(otp_auth_url)
+
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
+        box_size=10,
+        border=4,
+    )
+    qr.add_data(otp_auth_url)
+    qr.make(fit=True, image_factory=PyPNGImage)
+    img = qr.make_image(fill="black", back_color="white")
     buf = BytesIO()
-    img.save(buf, format='PNG', optimize=True)
+    img.save(buf, format='PNG')
     buf.seek(0)
     return send_file(buf, mimetype='image/png')
 
