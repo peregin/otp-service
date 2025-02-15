@@ -1,5 +1,7 @@
 import os
 from functools import wraps, lru_cache
+from http import HTTPStatus
+
 from flask import Flask, request, jsonify, send_file
 import pyotp
 from database import init_db, register_user, get_user_secret
@@ -19,8 +21,20 @@ def validate_username(f):
     def decorated_function(*args, **kwargs):
         username = request.json.get("username")
         if not username:
-            return jsonify({"error": "Username is required"}), 400
+            return jsonify({"error": "Username is required"}), HTTPStatus.BAD_REQUEST
         return f(username, *args, **kwargs)
+    return decorated_function
+
+def validate_otp(f):
+    """Decorator to validate OTP presence in request"""
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        data = request.json
+        otp = data.get("otp")
+        if not otp:
+            return jsonify({"error": "OTP is required"}), HTTPStatus.BAD_REQUEST
+        kwargs['otp'] = otp
+        return f(*args, **kwargs)
     return decorated_function
 
 @app.route("/register", methods=["POST"])
@@ -29,7 +43,7 @@ def register(username: str):
     secret = pyotp.random_base32()
     error = register_user(username, secret)
     if error:
-        return jsonify({"error": error}), 409
+        return jsonify({"error": error}), HTTPStatus.CONFLICT
     otp_auth_url = generate_totp_uri(secret, username)
     return jsonify({"message": "User registered", "secret": secret, "otp_auth_url": otp_auth_url})
 
@@ -39,7 +53,7 @@ def register_qr(username: str):
     secret = pyotp.random_base32()
     error = register_user(username, secret)
     if error:
-        return jsonify({"error": error}), 409
+        return jsonify({"error": error}), HTTPStatus.CONFLICT
     otp_auth_url = generate_totp_uri(secret, username)
 
     qr = generate_qr(otp_auth_url)
@@ -47,20 +61,17 @@ def register_qr(username: str):
 
 @app.route("/verify", methods=["POST"])
 @validate_username
-def verify(username: str):
-    data = request.json
-    otp = data.get("otp")
-    if not otp:
-        return jsonify({"error": "Username and OTP are required"}), 400
+@validate_otp
+def verify(username: str, otp: str):
     secret, error = get_user_secret(username)
     if error:
-        return jsonify({"error": error}), 404
+        return jsonify({"error": error}), HTTPStatus.NOT_FOUND
 
     totp = pyotp.TOTP(secret)
     if totp.verify(otp):
         return jsonify({"message": "OTP is valid"})
     else:
-        return jsonify({"error": "Invalid OTP"}), 400
+        return jsonify({"error": "Invalid OTP"}), HTTPStatus.UNAUTHORIZED
 
 if __name__ == "__main__":
     init_db()
